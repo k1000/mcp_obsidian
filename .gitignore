@@ -46,3 +46,4 @@ config/config.yaml
 Thumbs.db
 tasks/todo.md
 tasks/todo.md
+data/vector_db/chroma.sqlite3
