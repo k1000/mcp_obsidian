@@ -172,7 +172,7 @@ class ObsidianMCPServer:
             """
             try:
                 # Validate inputs
-                path = InputValidator.sanitize_filename(path)
+                path = InputValidator.sanitize_note_path(path)
 
                 note = await self.vault_manager.create_note(path, content, frontmatter)
 
