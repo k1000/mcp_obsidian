@@ -1,0 +1,86 @@
+# Obsidian MCP Server Configuration Example
+# Copy this file to config.yaml and update with your values
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8000
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+# Vault Configuration
+vault:
+  # Absolute path to your Obsidian vault
+  path: "/path/to/your/obsidian/vault"
+
+  # File extension for notes (default: md)
+  note_extension: "md"
+
+  # Maximum file size in MB
+  max_file_size_mb: 10
+
+  # Allowed file extensions for attachments
+  allowed_extensions:
+    - "md"
+    - "pdf"
+    - "png"
+    - "jpg"
+    - "jpeg"
+    - "gif"
+    - "svg"
+
+# Authentication Configuration
+auth:
+  # Enable authentication (recommended for production)
+  enabled: true
+
+  # API keys (use environment variables in production: OBSIDIAN_API_KEYS)
+  api_keys:
+    - "your-secret-api-key-here"
+    - "another-api-key"
+
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 10
+
+# CORS Configuration
+cors:
+  enabled: true
+  allow_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+  allow_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+  allow_headers:
+    - "Authorization"
+    - "Content-Type"
+
+# Search Configuration
+search:
+  # Enable full-text search
+  enabled: true
+
+  # Maximum search results
+  max_results: 100
+
+  # Enable search result caching
+  cache_enabled: true
+  cache_ttl_seconds: 300
+
+# Logging Configuration
+logging:
+  # Log file path (optional)
+  file: "logs/mcp_obsidian.log"
+
+  # Log format: json or text
+  format: "json"
+
+  # Include request/response logging
+  log_requests: true
+
+  # Include file operation audit trail
+  audit_enabled: true
