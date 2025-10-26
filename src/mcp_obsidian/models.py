@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class NoteMetadata(BaseModel):
@@ -32,14 +32,13 @@ class NoteMetadata(BaseModel):
 class Frontmatter(BaseModel):
     """YAML frontmatter data."""
 
+    model_config = ConfigDict(extra="allow")  # Allow additional fields in frontmatter
+
     title: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     date: Optional[datetime] = None
     aliases: List[str] = Field(default_factory=list)
     custom_fields: Dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        extra = "allow"  # Allow additional fields in frontmatter
 
 
 class Note(BaseModel):
