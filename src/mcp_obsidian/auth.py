@@ -262,6 +262,42 @@ class InputValidator:
         return filename
 
     @staticmethod
+    def sanitize_note_path(path: str) -> str:
+        """
+        Sanitize a note path while preserving folder structure.
+
+        Args:
+            path: Relative path that may include directories and filename
+
+        Returns:
+            Sanitized relative path
+        """
+        if not path:
+            return "untitled.md"
+
+        normalized = path.strip().lstrip("/")
+        if not normalized:
+            return "untitled.md"
+
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            return "untitled.md"
+
+        *dirs, filename = parts
+
+        safe_dirs = []
+        for part in dirs:
+            stripped = part.strip()
+            if not stripped or stripped in {".", ".."}:
+                continue
+            safe_dirs.append(stripped)
+
+        safe_filename = InputValidator.sanitize_filename(filename)
+
+        safe_parts = safe_dirs + [safe_filename]
+        return "/".join(safe_parts)
+
+    @staticmethod
     def validate_extension(filename: str, allowed_extensions: List[str]) -> bool:
         """
         Validate file extension.
