@@ -7,12 +7,15 @@ A secure, high-performance FastMCP server that provides authenticated access to 
 - **🔒 Secure Access**: API key authentication with rate limiting
 - **✏️ Full CRUD Operations**: Read, create, update, and delete notes
 - **🔍 Powerful Search**: Full-text search with tag and frontmatter filtering
+- **🧠 RAG & Semantic Search**: AI-powered semantic search with local or cloud embeddings
 - **🏷️ Tag Management**: Extract, add, and remove tags from notes
 - **🔗 Link Tracking**: Parse wiki-style links and find backlinks
 - **📊 Vault Statistics**: Get insights about your vault
 - **⚡ Async Performance**: Built with async I/O for optimal performance
 - **✅ Input Validation**: Comprehensive sanitization and security checks
 - **📝 Logging & Audit**: Detailed logging with audit trail
+- **🌐 Local-First RAG**: Use Ollama for fully local, private semantic search
+- **☁️ Cloud Embeddings**: Optional OpenAI, HuggingFace, or Cohere integration
 - **✔️ Well Tested**: Comprehensive test suite with >80% coverage
 
 ## Quick Start
@@ -421,6 +424,119 @@ Get statistics about the vault.
 
 ```python
 get_vault_stats()
+```
+
+### RAG & Semantic Search (Optional)
+
+**Note**: These tools are only available when RAG is enabled in the configuration.
+
+#### `semantic_search`
+
+Perform semantic search across vault notes using AI embeddings.
+
+**Parameters:**
+
+- `query` (str): Search query text
+- `k` (int, optional): Number of results to return (default: 10, max: 100)
+- `tags` (list[str], optional): Filter results by tags
+- `path_pattern` (str, optional): Filter results by path pattern
+
+**Returns:** JSON with semantic search results including similarity scores and matched text chunks
+
+**Example:**
+
+```python
+semantic_search(
+    query="machine learning concepts",
+    k=20,
+    tags=["ai", "notes"]
+)
+```
+
+#### `index_vault`
+
+Index vault notes for semantic search. Must be called before using `semantic_search`.
+
+**Parameters:**
+
+- `force_reindex` (bool, optional): Force re-indexing of all documents (default: False)
+- `path_pattern` (str, optional): Index only notes matching pattern
+- `batch_size` (int, optional): Batch size for processing (default: 32)
+
+**Returns:** JSON with indexing statistics (notes indexed, chunks added/updated)
+
+**Example:**
+
+```python
+# Index entire vault
+index_vault()
+
+# Force re-index specific folder
+index_vault(force_reindex=True, path_pattern="projects/**/*.md")
+```
+
+#### `get_index_stats`
+
+Get statistics about the semantic search index.
+
+**Returns:** JSON with index statistics including:
+- Total indexed documents and notes
+- Embedding dimension
+- Provider name (ollama, openai, etc.)
+- Index size in MB
+- Last indexed timestamp
+
+**Example:**
+
+```python
+get_index_stats()
+```
+
+#### `delete_index`
+
+Clear the entire semantic search index.
+
+**WARNING:** This permanently deletes all indexed embeddings and cannot be undone.
+
+**Returns:** JSON with operation status
+
+**Example:**
+
+```python
+delete_index()
+```
+
+### RAG Usage Workflow
+
+1. **Enable RAG** in your configuration (see MCP Client Configuration section above)
+2. **Start the server** with RAG enabled
+3. **Index your vault**: Call `index_vault()` to create embeddings
+4. **Perform semantic searches**: Use `semantic_search()` to find relevant notes
+5. **Monitor**: Check `get_index_stats()` to see index status
+6. **Maintain**: Re-index as needed when notes are updated
+
+**Example Workflow:**
+
+```python
+# 1. Index the vault (first time or after major changes)
+index_vault()
+
+# 2. Check index status
+get_index_stats()
+# Returns: {"total_documents": 250, "total_notes": 50, "provider": "ollama", ...}
+
+# 3. Perform semantic searches
+semantic_search(query="What are my notes about Python async programming?", k=10)
+
+# 4. Search with filters
+semantic_search(
+    query="project ideas",
+    tags=["work", "ideas"],
+    path_pattern="projects/**"
+)
+
+# 5. Re-index specific notes after updates
+index_vault(path_pattern="daily/2025-01-*.md")
 ```
 
 ## Configuration Reference
