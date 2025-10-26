@@ -159,3 +159,83 @@ class VaultStats(BaseModel):
     unique_tags: List[str]
     last_modified: datetime
     note_count_by_extension: Dict[str, int]
+
+
+# RAG and Semantic Search Models
+
+
+class EmbeddingProviderType(str, Enum):
+    """Supported embedding providers."""
+
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+    HUGGINGFACE = "huggingface"
+    COHERE = "cohere"
+    SENTENCE_TRANSFORMERS = "sentence_transformers"
+
+
+class ChunkingStrategy(str, Enum):
+    """Document chunking strategies."""
+
+    SMART = "smart"  # Split on headers and paragraphs
+    FIXED = "fixed"  # Fixed size chunks
+    RECURSIVE = "recursive"  # Recursive character splitting
+
+
+class SemanticSearchQuery(BaseModel):
+    """Semantic search query parameters."""
+
+    query: str = Field(..., description="Search query text")
+    k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
+    tags: Optional[List[str]] = Field(default=None, description="Filter by tags")
+    path_pattern: Optional[str] = Field(
+        default=None, description="Filter by path pattern (glob)"
+    )
+    hybrid_mode: bool = Field(
+        default=True, description="Use hybrid semantic + keyword search"
+    )
+    semantic_weight: float = Field(
+        default=0.7, ge=0.0, le=1.0, description="Weight for semantic search in hybrid mode"
+    )
+
+
+class SemanticSearchResult(BaseModel):
+    """Single semantic search result."""
+
+    note: NoteMetadata
+    score: float = Field(..., description="Similarity score")
+    chunk_text: str = Field(..., description="Matched text chunk")
+    chunk_index: int = Field(..., description="Index of the chunk in the note")
+
+
+class SemanticSearchResponse(BaseModel):
+    """Semantic search results response."""
+
+    results: List[SemanticSearchResult]
+    total: int = Field(..., description="Total number of results")
+    query: str = Field(..., description="Original query")
+    duration_ms: float = Field(..., description="Search duration in milliseconds")
+    hybrid_mode: bool = Field(..., description="Whether hybrid search was used")
+
+
+class IndexStats(BaseModel):
+    """Vector index statistics."""
+
+    total_documents: int = Field(..., description="Total indexed document chunks")
+    total_notes: int = Field(..., description="Total notes indexed")
+    embedding_dimension: int = Field(..., description="Embedding vector dimension")
+    provider: str = Field(..., description="Embedding provider name")
+    last_indexed: Optional[datetime] = Field(default=None, description="Last index time")
+    index_size_mb: float = Field(..., description="Index size in megabytes")
+
+
+class IndexOperation(BaseModel):
+    """Index operation request."""
+
+    force_reindex: bool = Field(
+        default=False, description="Force re-indexing of all documents"
+    )
+    path_pattern: Optional[str] = Field(
+        default=None, description="Index only notes matching pattern"
+    )
+    batch_size: int = Field(default=32, ge=1, le=100, description="Batch size for indexing")

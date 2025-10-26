@@ -67,6 +67,173 @@ uv run python -m mcp_obsidian.server
 uv run python -m mcp_obsidian.server config/config.yaml
 ```
 
+## MCP Client Configuration
+
+To use this server with an MCP client (like Claude Desktop), add the following to your MCP settings file:
+
+### Basic Configuration (Without RAG)
+
+**Location**: `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp_obsidian",
+        "run",
+        "python",
+        "-m",
+        "mcp_obsidian.server"
+      ],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/your/obsidian/vault",
+        "OBSIDIAN_API_KEYS": "your-secure-api-key-here"
+      }
+    }
+  }
+}
+```
+
+### RAG-Enabled Configuration (With Semantic Search)
+
+**For local embeddings using Ollama**:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp_obsidian",
+        "run",
+        "python",
+        "-m",
+        "mcp_obsidian.server"
+      ],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/your/obsidian/vault",
+        "OBSIDIAN_API_KEYS": "your-secure-api-key-here",
+        "OBSIDIAN_RAG__ENABLED": "true",
+        "OBSIDIAN_RAG__PROVIDER": "ollama",
+        "OBSIDIAN_RAG__PROVIDERS__OLLAMA__BASE_URL": "http://localhost:11434",
+        "OBSIDIAN_RAG__PROVIDERS__OLLAMA__MODEL": "nomic-embed-text"
+      }
+    }
+  }
+}
+```
+
+**For OpenAI embeddings**:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp_obsidian",
+        "run",
+        "python",
+        "-m",
+        "mcp_obsidian.server"
+      ],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/your/obsidian/vault",
+        "OBSIDIAN_API_KEYS": "your-secure-api-key-here",
+        "OBSIDIAN_RAG__ENABLED": "true",
+        "OBSIDIAN_RAG__PROVIDER": "openai",
+        "OBSIDIAN_RAG__PROVIDERS__OPENAI__API_KEY": "sk-your-openai-api-key",
+        "OBSIDIAN_RAG__PROVIDERS__OPENAI__MODEL": "text-embedding-3-small"
+      }
+    }
+  }
+}
+```
+
+### Using a Config File
+
+Alternatively, you can use a YAML config file:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp_obsidian",
+        "run",
+        "python",
+        "-m",
+        "mcp_obsidian.server",
+        "/path/to/config.yaml"
+      ]
+    }
+  }
+}
+```
+
+**Example `config.yaml` with RAG**:
+
+```yaml
+vault:
+  path: '/path/to/your/obsidian/vault'
+
+auth:
+  enabled: true
+  api_keys:
+    - 'your-secure-api-key-here'
+
+rag:
+  enabled: true
+  provider: 'ollama'  # or 'openai', 'huggingface', 'cohere'
+
+  providers:
+    ollama:
+      base_url: 'http://localhost:11434'
+      model: 'nomic-embed-text'
+      timeout: 30
+
+    openai:
+      api_key: 'sk-your-api-key'
+      model: 'text-embedding-3-small'
+
+  vector_store: 'chroma'
+  vector_db_path: 'data/vector_db'
+
+  chunking:
+    strategy: 'smart'  # smart, fixed, or recursive
+    chunk_size: 512
+    chunk_overlap: 50
+    split_on_headers: true
+
+  search:
+    hybrid_mode: true
+    semantic_weight: 0.7
+    keyword_weight: 0.3
+    top_k: 20
+
+  cache_embeddings: true
+  batch_size: 32
+  index_on_startup: false
+```
+
+### Prerequisites for RAG
+
+**For Ollama (Local)**:
+1. Install Ollama: https://ollama.ai
+2. Pull embedding model: `ollama pull nomic-embed-text`
+3. Start Ollama: `ollama serve`
+
+**For OpenAI**:
+1. Get API key from https://platform.openai.com
+2. Set environment variable or config
+
 ## MCP Tools
 
 The server provides the following MCP tools:

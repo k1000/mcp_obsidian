@@ -11,13 +11,22 @@ from .auth import ApiKeyAuth, InputValidator, RateLimiter
 from .config import get_config
 from .models import (
     CreateNoteRequest,
+    IndexOperation,
     ListNotesRequest,
     OperationResponse,
     OperationStatus,
+    SemanticSearchQuery,
     SearchQuery,
     UpdateNoteRequest,
 )
 from .obsidian_utils import ObsidianParser
+from .rag import (
+    ChromaVectorStore,
+    DocumentChunker,
+    OllamaEmbeddingProvider,
+    OpenAIEmbeddingProvider,
+    RAGEngine,
+)
 from .search import SearchEngine
 from .vault import VaultManager, VaultOperationError
 
@@ -61,6 +70,12 @@ class ObsidianMCPServer:
                     burst_size=self.config.auth.rate_limit.burst_size,
                 )
 
+        # Initialize RAG engine if enabled
+        self.rag_engine = None
+        if self.config.rag.enabled:
+            self.rag_engine = self._initialize_rag_engine()
+            logger.info("RAG engine initialized")
+
         # Create MCP server
         self.mcp = FastMCP("obsidian-vault")
 
@@ -68,6 +83,52 @@ class ObsidianMCPServer:
         self._register_tools()
 
         logger.info("ObsidianMCPServer initialized")
+
+    def _initialize_rag_engine(self) -> RAGEngine:
+        """Initialize RAG engine with configured provider."""
+        # Initialize embedding provider based on config
+        provider_name = self.config.rag.provider.lower()
+
+        if provider_name == "ollama":
+            embedding_provider = OllamaEmbeddingProvider(
+                base_url=self.config.rag.providers.ollama.base_url,
+                model=self.config.rag.providers.ollama.model,
+                timeout=self.config.rag.providers.ollama.timeout,
+            )
+        elif provider_name == "openai":
+            embedding_provider = OpenAIEmbeddingProvider(
+                api_key=self.config.rag.providers.openai.api_key,
+                model=self.config.rag.providers.openai.model,
+                dimensions=self.config.rag.providers.openai.dimensions,
+            )
+        else:
+            raise ValueError(f"Unsupported embedding provider: {provider_name}")
+
+        # Initialize vector store
+        vector_store = ChromaVectorStore(
+            persist_directory=self.config.rag.vector_db_path,
+            collection_name="obsidian",
+        )
+
+        # Initialize chunker
+        chunker = DocumentChunker(
+            chunk_size=self.config.rag.chunking.chunk_size,
+            chunk_overlap=self.config.rag.chunking.chunk_overlap,
+            strategy=self.config.rag.chunking.strategy,
+            split_on_headers=self.config.rag.chunking.split_on_headers,
+        )
+
+        # Create RAG engine
+        rag_engine = RAGEngine(
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            vault_manager=self.vault_manager,
+            chunker=chunker,
+            cache_embeddings=self.config.rag.cache_embeddings,
+            batch_size=self.config.rag.batch_size,
+        )
+
+        return rag_engine
 
     def _register_tools(self) -> None:
         """Register all MCP tools."""

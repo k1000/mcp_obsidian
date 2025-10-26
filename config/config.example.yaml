@@ -84,3 +84,61 @@ logging:
 
   # Include file operation audit trail
   audit_enabled: true
+
+# RAG and Semantic Search Configuration
+rag:
+  # Enable RAG/semantic search features
+  enabled: false
+
+  # Embedding provider: ollama, openai, huggingface, cohere
+  provider: "ollama"
+
+  # Provider-specific configurations
+  providers:
+    # Ollama (local embeddings)
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "nomic-embed-text"  # or mxbai-embed-large
+      timeout: 30
+
+    # OpenAI embeddings
+    openai:
+      api_key: ""  # Set via environment variable: OBSIDIAN_RAG__PROVIDERS__OPENAI__API_KEY
+      model: "text-embedding-3-small"
+      dimensions: null  # Optional: specify dimensions
+
+    # HuggingFace embeddings
+    huggingface:
+      model: "sentence-transformers/all-MiniLM-L6-v2"
+      device: "cpu"  # cpu or cuda
+      use_api: false  # Use HuggingFace API instead of local
+      api_key: ""  # Required if use_api: true
+
+    # Cohere embeddings
+    cohere:
+      api_key: ""  # Set via environment variable
+      model: "embed-english-v3.0"
+
+  # Vector store configuration
+  vector_store: "chroma"  # chroma or faiss
+  vector_db_path: "data/vector_db"
+
+  # Document chunking strategy
+  chunking:
+    strategy: "smart"  # smart, fixed, or recursive
+    chunk_size: 512  # Chunk size in characters
+    chunk_overlap: 50  # Overlap between chunks
+    split_on_headers: true  # Split on markdown headers
+
+  # Search configuration
+  search:
+    hybrid_mode: true  # Combine semantic + keyword search
+    semantic_weight: 0.7  # Weight for semantic results
+    keyword_weight: 0.3  # Weight for keyword results
+    top_k: 20  # Number of results to retrieve
+    rerank: false  # Enable re-ranking (not implemented yet)
+
+  # Performance settings
+  cache_embeddings: true
+  batch_size: 32
+  index_on_startup: false  # Auto-index vault on server start

@@ -134,6 +134,135 @@ class LoggingConfig(BaseSettings):
         return v
 
 
+class OllamaProviderConfig(BaseSettings):
+    """Ollama embedding provider configuration."""
+
+    base_url: str = Field(default="http://localhost:11434", description="Ollama API base URL")
+    model: str = Field(default="nomic-embed-text", description="Ollama embedding model")
+    timeout: int = Field(default=30, ge=5, le=120, description="Request timeout in seconds")
+
+
+class OpenAIProviderConfig(BaseSettings):
+    """OpenAI embedding provider configuration."""
+
+    api_key: str = Field(default="", description="OpenAI API key")
+    model: str = Field(
+        default="text-embedding-3-small", description="OpenAI embedding model"
+    )
+    dimensions: Optional[int] = Field(
+        default=None, description="Embedding dimensions (for models that support it)"
+    )
+
+
+class HuggingFaceProviderConfig(BaseSettings):
+    """HuggingFace embedding provider configuration."""
+
+    model: str = Field(
+        default="sentence-transformers/all-MiniLM-L6-v2",
+        description="HuggingFace model name",
+    )
+    device: str = Field(default="cpu", description="Device: cpu or cuda")
+    use_api: bool = Field(default=False, description="Use HuggingFace API instead of local")
+    api_key: str = Field(default="", description="HuggingFace API key (if use_api=True)")
+
+
+class CohereProviderConfig(BaseSettings):
+    """Cohere embedding provider configuration."""
+
+    api_key: str = Field(default="", description="Cohere API key")
+    model: str = Field(default="embed-english-v3.0", description="Cohere embedding model")
+
+
+class RAGProvidersConfig(BaseSettings):
+    """Configuration for all embedding providers."""
+
+    ollama: OllamaProviderConfig = Field(default_factory=OllamaProviderConfig)
+    openai: OpenAIProviderConfig = Field(default_factory=OpenAIProviderConfig)
+    huggingface: HuggingFaceProviderConfig = Field(default_factory=HuggingFaceProviderConfig)
+    cohere: CohereProviderConfig = Field(default_factory=CohereProviderConfig)
+
+
+class RAGChunkingConfig(BaseSettings):
+    """Document chunking configuration."""
+
+    strategy: str = Field(default="smart", description="Chunking strategy: smart, fixed, recursive")
+    chunk_size: int = Field(default=512, ge=128, le=2048, description="Chunk size in tokens")
+    chunk_overlap: int = Field(
+        default=50, ge=0, le=512, description="Overlap between chunks in tokens"
+    )
+    split_on_headers: bool = Field(
+        default=True, description="Split on markdown headers for smart chunking"
+    )
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, v: str) -> str:
+        """Validate chunking strategy."""
+        if v not in ["smart", "fixed", "recursive"]:
+            raise ValueError("Chunking strategy must be 'smart', 'fixed', or 'recursive'")
+        return v
+
+
+class RAGSearchConfig(BaseSettings):
+    """RAG search configuration."""
+
+    hybrid_mode: bool = Field(
+        default=True, description="Combine semantic and keyword search"
+    )
+    semantic_weight: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Weight for semantic results in hybrid mode",
+    )
+    keyword_weight: float = Field(
+        default=0.3, ge=0.0, le=1.0, description="Weight for keyword results in hybrid mode"
+    )
+    top_k: int = Field(default=20, ge=1, le=100, description="Number of results to retrieve")
+    rerank: bool = Field(default=False, description="Enable re-ranking of results")
+
+
+class RAGConfig(BaseSettings):
+    """RAG and semantic search configuration."""
+
+    enabled: bool = Field(default=False, description="Enable RAG/semantic search")
+    provider: str = Field(
+        default="ollama",
+        description="Embedding provider: ollama, openai, huggingface, cohere",
+    )
+    providers: RAGProvidersConfig = Field(default_factory=RAGProvidersConfig)
+    vector_store: str = Field(default="chroma", description="Vector store: chroma or faiss")
+    vector_db_path: str = Field(
+        default="data/vector_db", description="Path to vector database"
+    )
+    chunking: RAGChunkingConfig = Field(default_factory=RAGChunkingConfig)
+    search: RAGSearchConfig = Field(default_factory=RAGSearchConfig)
+    cache_embeddings: bool = Field(default=True, description="Cache embeddings")
+    batch_size: int = Field(
+        default=32, ge=1, le=100, description="Batch size for embedding generation"
+    )
+    index_on_startup: bool = Field(
+        default=False, description="Automatically index vault on startup"
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        """Validate embedding provider."""
+        valid_providers = ["ollama", "openai", "huggingface", "cohere"]
+        if v not in valid_providers:
+            raise ValueError(f"Provider must be one of {valid_providers}")
+        return v
+
+    @field_validator("vector_store")
+    @classmethod
+    def validate_vector_store(cls, v: str) -> str:
+        """Validate vector store."""
+        if v not in ["chroma", "faiss"]:
+            raise ValueError("Vector store must be 'chroma' or 'faiss'")
+        return v
+
+
 class Config(BaseSettings):
     """Main configuration."""
 
@@ -149,6 +278,7 @@ class Config(BaseSettings):
     cors: CorsConfig = Field(default_factory=CorsConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    rag: RAGConfig = Field(default_factory=RAGConfig)
 
     @classmethod
     def from_yaml(cls, config_path: str) -> "Config":
