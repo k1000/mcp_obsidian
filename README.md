@@ -181,6 +181,24 @@ Alternatively, you can use a YAML config file:
 }
 ```
 
+> 💡 If you store all settings in `config/config.yaml` (or set `OBSIDIAN_CONFIG_PATH`), you can drop the `env` block entirely—the server will read everything from the config file.
+
+#### Minimal MCP Config (no args/env)
+
+Prefer to keep your Claude/VS Code MCP entry minimal? Use the helper launcher and omit both `args` and `env`:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "/path/to/mcp_obsidian/scripts/run_server.sh"
+    }
+  }
+}
+```
+
+`scripts/run_server.sh` automatically `cd`s into the repo and starts `uv run python -m mcp_obsidian.server`, passing `config/config.yaml` when it exists. To point the script at another config, call it with `--config /path/to/custom.yaml` (add an `args` block only if you need to forward those flags from your MCP client).
+
 **Example `config.yaml` with RAG**:
 
 ```yaml
@@ -515,7 +533,25 @@ delete_index()
 5. **Monitor**: Check `get_index_stats()` to see index status
 6. **Maintain**: Re-index as needed when notes are updated
 
-**Example Workflow:**
+**Quick Command-Line Indexing (helper scripts):**
+
+```bash
+# Incremental index - discovers and indexes only NEW files (RECOMMENDED)
+./scripts/index_incremental.sh [--config config/config.yaml]
+
+# Full re-index - indexes ALL files (slower, use after config changes)
+./scripts/index_full.sh [--config config/config.yaml]
+
+# Index specific folder only (override the glob with --pattern)
+./scripts/index_folder.sh --pattern "projects/**" [--config config/config.yaml]
+
+# Check index stats
+./scripts/index_stats.sh [--config config/config.yaml]
+```
+
+Each script simply wraps the corresponding `uv run python -c ...` command, so you can still run those manually if you prefer.
+
+**Example Workflow (via MCP Client):**
 
 ```python
 # 1. Index the vault (first time or after major changes)
@@ -535,8 +571,8 @@ semantic_search(
     path_pattern="projects/**"
 )
 
-# 5. Re-index specific notes after updates
-index_vault(path_pattern="daily/2025-01-*.md")
+# 5. Incremental re-index (only new/modified files - FAST!)
+index_vault(force_reindex=False)
 ```
 
 ## Configuration Reference

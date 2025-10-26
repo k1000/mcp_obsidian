@@ -44,14 +44,14 @@ config/config.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# Project-specific
 tasks/todo.md
-tasks/todo.md
-data/vector_db/chroma.sqlite3
-data/vector_db/ddd382be-03b2-409d-b944-461bcf61c5f0/data_level0.bin
-data/vector_db/ddd382be-03b2-409d-b944-461bcf61c5f0/header.bin
-.gitignore
-data/vector_db/ddd382be-03b2-409d-b944-461bcf61c5f0/index_metadata.pickle
-.gitignore
-data/vector_db/ddd382be-03b2-409d-b944-461bcf61c5f0/length.bin
-.gitignore
-data/vector_db/ddd382be-03b2-409d-b944-461bcf61c5f0/link_lists.bin
+
+# RAG/Vector Database
+data/
+*.sqlite3
+
+# Test scripts (optional - uncomment if you want to keep them)
+test_*.py
+index_new_files.py
