@@ -27,18 +27,46 @@ class PathValidator:
         Returns:
             True if path is safe, False otherwise
         """
-        # Prevent obvious attacks
-        if ".." in target_path or target_path.startswith("/"):
+        # Early rejection of obviously dangerous paths
+        if not target_path or target_path.startswith(("/", "\\")):
+            return False
+            
+        # Sanitize first to normalize the path
+        sanitized = PathValidator.sanitize_path(target_path)
+        if not sanitized:
             return False
 
-        # Resolve to absolute path and check it's within vault
         try:
-            full_path = (vault_root / target_path).resolve()
-            vault_root_resolved = vault_root.resolve()
-
-            # Check if the path is within the vault root
-            return str(full_path).startswith(str(vault_root_resolved))
-        except (ValueError, OSError):
+            # Resolve both paths to handle symlinks and .. components
+            vault_root_resolved = vault_root.resolve(strict=True)
+            full_path = (vault_root / sanitized).resolve(strict=False)
+            
+            # Use relative_to for robust containment check
+            # This will raise ValueError if path is not contained
+            full_path.relative_to(vault_root_resolved)
+            
+            # Additional check: ensure no symlink escapes vault
+            # Walk up the path and check each component
+            current = full_path
+            while current != vault_root_resolved:
+                if current.is_symlink():
+                    # Resolve symlink and check it's still within vault
+                    resolved_link = current.resolve(strict=False)
+                    try:
+                        resolved_link.relative_to(vault_root_resolved)
+                    except ValueError:
+                        logger.warning(f"Symlink escape attempt: {target_path}")
+                        return False
+                
+                parent = current.parent
+                if parent == current:  # Reached filesystem root
+                    break
+                current = parent
+                
+            return True
+            
+        except (ValueError, OSError, RuntimeError) as e:
+            logger.warning(f"Path validation failed for {target_path}: {e}")
             return False
 
     @staticmethod
@@ -265,37 +293,66 @@ class InputValidator:
     def sanitize_note_path(path: str) -> str:
         """
         Sanitize a note path while preserving folder structure.
+        
+        This normalizes the path by:
+        - Removing dangerous characters
+        - Collapsing multiple slashes
+        - Removing . and .. components
+        - Ensuring consistent forward slash separators
 
         Args:
             path: Relative path that may include directories and filename
 
         Returns:
-            Sanitized relative path
+            Sanitized relative path, normalized for consistent use
         """
         if not path:
             return "untitled.md"
 
-        normalized = path.strip().lstrip("/")
+        # Normalize path separators and remove leading/trailing whitespace
+        normalized = path.strip().replace("\\", "/")
+        
+        # Remove leading slashes to ensure relative path
+        normalized = normalized.lstrip("/")
+        
         if not normalized:
             return "untitled.md"
 
-        parts = [part for part in normalized.split("/") if part]
+        # Split into parts and filter out empty, ".", and ".." components
+        parts = []
+        for part in normalized.split("/"):
+            part = part.strip()
+            if part and part not in {".", ".."}:
+                # Remove null bytes and other control characters
+                part = "".join(c for c in part if ord(c) >= 32)
+                if part:  # Only add non-empty parts after cleaning
+                    parts.append(part)
+
         if not parts:
             return "untitled.md"
 
+        # Process directory parts and filename separately
         *dirs, filename = parts
 
+        # Sanitize directory names
         safe_dirs = []
-        for part in dirs:
-            stripped = part.strip()
-            if not stripped or stripped in {".", ".."}:
-                continue
-            safe_dirs.append(stripped)
+        for dir_part in dirs:
+            sanitized_dir = InputValidator.sanitize_filename(dir_part)
+            if sanitized_dir and sanitized_dir != "untitled":  # Avoid generic dir names
+                safe_dirs.append(sanitized_dir)
 
+        # Sanitize filename
         safe_filename = InputValidator.sanitize_filename(filename)
+        
+        # Ensure filename has .md extension if it doesn't have any extension
+        if "." not in safe_filename:
+            safe_filename += ".md"
 
-        safe_parts = safe_dirs + [safe_filename]
-        return "/".join(safe_parts)
+        # Combine sanitized parts
+        if safe_dirs:
+            return "/".join(safe_dirs + [safe_filename])
+        else:
+            return safe_filename
 
     @staticmethod
     def validate_extension(filename: str, allowed_extensions: List[str]) -> bool:

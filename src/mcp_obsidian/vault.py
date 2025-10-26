@@ -4,6 +4,8 @@ Core vault operations for reading, writing, and managing Obsidian notes.
 
 import asyncio
 import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -54,28 +56,94 @@ class VaultManager:
         logger.info(f"Initialized VaultManager for: {self.vault_path}")
 
     def _get_lock(self, path: str) -> asyncio.Lock:
-        """Get or create a lock for a specific file path."""
-        if path not in self._locks:
-            self._locks[path] = asyncio.Lock()
-        return self._locks[path]
+        """Get or create a lock for a specific file path using normalized path."""
+        # Normalize path for consistent locking
+        normalized_path = InputValidator.sanitize_note_path(path)
+        if normalized_path not in self._locks:
+            self._locks[normalized_path] = asyncio.Lock()
+        return self._locks[normalized_path]
 
-    def _validate_path(self, relative_path: str) -> Path:
+    def _validate_path(self, relative_path: str) -> tuple[Path, str]:
         """
-        Validate and resolve a relative path.
+        Validate and resolve a relative path with normalization and extension checking.
 
         Args:
             relative_path: Path relative to vault root
 
         Returns:
-            Resolved absolute path
+            Tuple of (resolved absolute path, normalized relative path)
 
         Raises:
             VaultOperationError: If path is invalid
         """
-        if not PathValidator.is_safe_path(self.vault_path, relative_path):
+        # Normalize the path first
+        normalized_path = InputValidator.sanitize_note_path(relative_path)
+        
+        # Validate the normalized path is safe
+        if not PathValidator.is_safe_path(self.vault_path, normalized_path):
             raise VaultOperationError(f"Invalid or unsafe path: {relative_path}")
+        
+        # Extract filename to check extension
+        filename = Path(normalized_path).name
+        if not InputValidator.validate_extension(filename, self.allowed_extensions):
+            allowed_exts = ", ".join(self.allowed_extensions)
+            raise VaultOperationError(
+                f"File extension not allowed. Allowed extensions: {allowed_exts}. Got: {filename}"
+            )
 
-        return self.vault_path / relative_path
+        resolved_path = self.vault_path / normalized_path
+        return resolved_path, normalized_path
+
+    async def _atomic_write(self, file_path: Path, content: str) -> None:
+        """
+        Atomically write content to a file using temp file + rename.
+        
+        Args:
+            file_path: Target file path
+            content: Content to write
+            
+        Raises:
+            VaultOperationError: If write fails
+        """
+        try:
+            # Create parent directories if needed
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Create temporary file in the same directory for atomic rename
+            temp_fd, temp_path = tempfile.mkstemp(
+                dir=file_path.parent,
+                prefix=f".{file_path.name}.tmp",
+                suffix=".md"
+            )
+            
+            try:
+                # Write content to temp file
+                async with aiofiles.open(temp_fd, "w", encoding="utf-8", closefd=False) as f:
+                    await f.write(content)
+                    await f.flush()
+                    # Force write to disk for durability
+                    os.fsync(temp_fd)
+                
+                # Close the file descriptor
+                os.close(temp_fd)
+                
+                # Atomically replace the target file
+                os.replace(temp_path, file_path)
+                
+            except Exception:
+                # Clean up temp file on error
+                try:
+                    os.close(temp_fd)
+                except OSError:
+                    pass
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
+                
+        except Exception as e:
+            raise VaultOperationError(f"Failed to write file atomically: {e}")
 
     async def read_note(self, path: str) -> Note:
         """
@@ -90,7 +158,7 @@ class VaultManager:
         Raises:
             VaultOperationError: If note cannot be read
         """
-        file_path = self._validate_path(path)
+        file_path, normalized_path = self._validate_path(path)
 
         if not await aiofiles.os.path.exists(file_path):
             raise VaultOperationError(f"Note not found: {path}")
@@ -109,9 +177,9 @@ class VaultManager:
                 tags = ObsidianParser.extract_tags(content)
                 links = ObsidianParser.extract_wiki_links(content)
 
-                # Create metadata
+                # Create metadata using normalized path
                 metadata = NoteMetadata(
-                    path=path,
+                    path=normalized_path,
                     name=file_path.name,
                     size=stat.st_size,
                     created=datetime.fromtimestamp(stat.st_ctime),
@@ -135,7 +203,7 @@ class VaultManager:
                     backlinks=[],  # Backlinks computed separately
                 )
 
-                logger.debug(f"Successfully read note: {path}")
+                logger.debug(f"Successfully read note: {normalized_path}")
                 return note
 
             except Exception as e:
@@ -159,15 +227,12 @@ class VaultManager:
         Raises:
             VaultOperationError: If note cannot be created
         """
-        # Ensure path ends with .md
-        if not path.endswith(".md"):
-            path = f"{path}.md"
-
-        file_path = self._validate_path(path)
+        # Normalize and validate path (extension will be added if missing)
+        file_path, normalized_path = self._validate_path(path)
 
         # Check if file already exists
         if await aiofiles.os.path.exists(file_path):
-            raise VaultOperationError(f"Note already exists: {path}")
+            raise VaultOperationError(f"Note already exists: {normalized_path}")
 
         # Validate content size
         if not InputValidator.validate_content_size(content, self.max_file_size_mb):
@@ -177,24 +242,21 @@ class VaultManager:
 
         async with self._get_lock(path):
             try:
-                # Create parent directories if needed
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-
                 # Add frontmatter if provided
+                final_content = content
                 if frontmatter:
-                    content = ObsidianParser.add_frontmatter(content, frontmatter)
+                    final_content = ObsidianParser.add_frontmatter(content, frontmatter)
 
-                # Write file
-                async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
-                    await f.write(content)
+                # Write file atomically
+                await self._atomic_write(file_path, final_content)
 
-                logger.info(f"Created note: {path}")
+                logger.info(f"Created note: {normalized_path}")
 
                 # Read and return the created note
-                return await self.read_note(path)
+                return await self.read_note(normalized_path)
 
             except Exception as e:
-                logger.error(f"Error creating note {path}: {e}")
+                logger.error(f"Error creating note {normalized_path}: {e}")
                 raise VaultOperationError(f"Failed to create note: {e}")
 
     async def update_note(
@@ -219,10 +281,10 @@ class VaultManager:
         Raises:
             VaultOperationError: If note cannot be updated
         """
-        file_path = self._validate_path(path)
+        file_path, normalized_path = self._validate_path(path)
 
         if not await aiofiles.os.path.exists(file_path):
-            raise VaultOperationError(f"Note not found: {path}")
+            raise VaultOperationError(f"Note not found: {normalized_path}")
 
         async with self._get_lock(path):
             try:
@@ -240,6 +302,17 @@ class VaultManager:
 
                 # Update content
                 if content:
+                    # Validate content size for the new content being added/replaced
+                    test_content = content
+                    if append:
+                        # For append, check combined size
+                        test_content = f"{new_content.rstrip()}\n\n{content}"
+                    
+                    if not InputValidator.validate_content_size(test_content, self.max_file_size_mb):
+                        raise VaultOperationError(
+                            f"Content exceeds maximum size of {self.max_file_size_mb}MB"
+                        )
+                    
                     if append:
                         # Append to existing content
                         new_content = f"{new_content.rstrip()}\n\n{content}"
@@ -251,30 +324,27 @@ class VaultManager:
                         else:
                             new_content = content
 
-                # Validate content size
-                if not InputValidator.validate_content_size(
-                    new_content, self.max_file_size_mb
-                ):
+                # Final validation of complete content size
+                if not InputValidator.validate_content_size(new_content, self.max_file_size_mb):
                     raise VaultOperationError(
-                        f"Content exceeds maximum size of {self.max_file_size_mb}MB"
+                        f"Final content exceeds maximum size of {self.max_file_size_mb}MB"
                     )
 
-                # Write updated content
-                async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
-                    await f.write(new_content)
+                # Write updated content atomically
+                await self._atomic_write(file_path, new_content)
 
-                logger.info(f"Updated note: {path}")
+                logger.info(f"Updated note: {normalized_path}")
 
                 # Read and return the updated note
-                return await self.read_note(path)
+                return await self.read_note(normalized_path)
 
             except Exception as e:
-                logger.error(f"Error updating note {path}: {e}")
+                logger.error(f"Error updating note {normalized_path}: {e}")
                 raise VaultOperationError(f"Failed to update note: {e}")
 
     async def delete_note(self, path: str) -> bool:
         """
-        Delete a note from the vault.
+        Delete a note from the vault with robust error handling.
 
         Args:
             path: Relative path to the note
@@ -285,19 +355,41 @@ class VaultManager:
         Raises:
             VaultOperationError: If note cannot be deleted
         """
-        file_path = self._validate_path(path)
-
-        if not await aiofiles.os.path.exists(file_path):
-            raise VaultOperationError(f"Note not found: {path}")
+        file_path, normalized_path = self._validate_path(path)
 
         async with self._get_lock(path):
             try:
+                # Double-check file exists before attempting delete
+                if not await aiofiles.os.path.exists(file_path):
+                    raise VaultOperationError(f"Note not found: {normalized_path}")
+                
+                # Additional safety check: ensure it's a file and not a directory
+                stat_info = await aiofiles.os.stat(file_path)
+                if not stat_info.st_mode & 0o100000:  # S_IFREG check for regular file
+                    raise VaultOperationError(f"Path is not a regular file: {normalized_path}")
+                
+                # Perform the deletion
                 await aiofiles.os.remove(file_path)
-                logger.info(f"Deleted note: {path}")
+                
+                # Verify deletion was successful
+                if await aiofiles.os.path.exists(file_path):
+                    raise VaultOperationError(f"File still exists after deletion: {normalized_path}")
+                
+                logger.info(f"Deleted note: {normalized_path}")
                 return True
 
+            except VaultOperationError:
+                # Re-raise our own exceptions
+                raise
+            except FileNotFoundError:
+                # File was already deleted, consider it success
+                logger.info(f"Note was already deleted: {normalized_path}")
+                return True
+            except PermissionError as e:
+                logger.error(f"Permission denied deleting note {normalized_path}: {e}")
+                raise VaultOperationError(f"Permission denied: cannot delete {normalized_path}")
             except Exception as e:
-                logger.error(f"Error deleting note {path}: {e}")
+                logger.error(f"Error deleting note {normalized_path}: {e}")
                 raise VaultOperationError(f"Failed to delete note: {e}")
 
     async def list_notes(
