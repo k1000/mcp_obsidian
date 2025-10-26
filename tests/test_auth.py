@@ -172,3 +172,13 @@ class TestInputValidator:
 
         large_content = "a" * (11 * 1024 * 1024)  # 11MB
         assert not InputValidator.validate_content_size(large_content, max_size_mb=10)
+
+    def test_sanitize_note_path_preserves_directories(self):
+        """Ensure sanitize_note_path keeps directory structure and cleans filename."""
+        path = InputValidator.sanitize_note_path("projects/sub folder/New Note.md")
+        assert path == "projects/sub folder/New Note.md"
+
+    def test_sanitize_note_path_blocks_traversal(self):
+        """Ensure sanitize_note_path removes traversal segments."""
+        path = InputValidator.sanitize_note_path("../outside/../notes/evil?.md")
+        assert path == "notes/evil_.md"
