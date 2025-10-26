@@ -124,7 +124,7 @@ class RAGEngine:
                 "note_path": note_metadata.path,
                 "note_name": note_metadata.name,
                 "modified": note_metadata.modified.isoformat(),
-                "tags": note.tags,
+                "tags": ",".join(note.tags) if note.tags else "",  # Convert list to comma-separated string
             },
         )
 
@@ -222,22 +222,14 @@ class RAGEngine:
             logger.error(f"Error generating query embedding: {e}")
             raise RuntimeError(f"Failed to generate query embedding: {e}") from e
 
-        # Build metadata filter
-        filter_dict = {}
-        if tags:
-            # ChromaDB filter syntax for tags
-            filter_dict["tags"] = {"$in": tags}
-        if path_pattern:
-            # Note: path pattern filtering may need to be done post-retrieval
-            # depending on vector store capabilities
-            pass
-
-        # Search vector store
+        # Search vector store (no pre-filtering, we'll filter results in Python)
         try:
+            # Get extra results if we need to filter
+            fetch_k = k * 3 if (tags or path_pattern) else k
             results = await self.vector_store.search(
                 query_embedding=query_embedding,
-                k=k * 2 if path_pattern else k,  # Get more if we need to filter
-                filter=filter_dict if filter_dict else None,
+                k=fetch_k,
+                filter=None,  # Do filtering post-retrieval for flexibility
             )
         except Exception as e:
             logger.error(f"Error searching vector store: {e}")
@@ -250,6 +242,16 @@ class RAGEngine:
                 note_path = metadata.get("note_path", "")
                 note_name = metadata.get("note_name", "")
                 chunk_index = metadata.get("chunk_index", 0)
+                note_tags_str = metadata.get("tags", "")
+
+                # Parse tags from comma-separated string
+                note_tags = [t.strip() for t in note_tags_str.split(",") if t.strip()]
+
+                # Apply tag filter if needed
+                if tags:
+                    # Check if any of the requested tags are in the note's tags
+                    if not any(tag in note_tags for tag in tags):
+                        continue
 
                 # Apply path pattern filter if needed
                 if path_pattern:
