@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import yaml
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -74,16 +74,20 @@ class AuthConfig(BaseSettings):
         default_factory=RateLimitConfig, description="Rate limiting config"
     )
 
-    @field_validator("api_keys")
-    @classmethod
-    def validate_api_keys(cls, v: List[str]) -> List[str]:
-        """Validate API keys."""
-        if not v:
-            raise ValueError("At least one API key must be configured when auth is enabled")
-        for key in v:
+    @model_validator(mode="after")
+    def validate_api_keys(cls, config: "AuthConfig") -> "AuthConfig":
+        """Validate API keys depending on auth settings."""
+        if config.enabled:
+            if not config.api_keys:
+                raise ValueError(
+                    "At least one API key must be configured when auth is enabled"
+                )
+
+        for key in config.api_keys:
             if len(key) < 16:
                 raise ValueError("API keys must be at least 16 characters long")
-        return v
+
+        return config
 
 
 class CorsConfig(BaseSettings):
