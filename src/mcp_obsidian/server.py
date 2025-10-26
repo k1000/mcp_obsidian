@@ -474,6 +474,144 @@ class ObsidianMCPServer:
                     error=str(e),
                 ).model_dump_json()
 
+        # RAG/Semantic Search Tools
+        if self.rag_engine:
+
+            @self.mcp.tool()
+            async def semantic_search(
+                query: str,
+                k: int = 10,
+                tags: Optional[List[str]] = None,
+                path_pattern: Optional[str] = None,
+            ) -> str:
+                """
+                Perform semantic search across vault notes using embeddings.
+
+                Args:
+                    query: Search query text
+                    k: Number of results to return (1-100)
+                    tags: Optional list of tags to filter by
+                    path_pattern: Optional path pattern to filter results
+
+                Returns:
+                    JSON string with semantic search results including similarity scores
+                """
+                try:
+                    results = await self.rag_engine.semantic_search(
+                        query=query,
+                        k=min(k, 100),
+                        tags=tags,
+                        path_pattern=path_pattern,
+                    )
+
+                    from .models import SemanticSearchResponse
+                    import time
+
+                    response = SemanticSearchResponse(
+                        results=results,
+                        total=len(results),
+                        query=query,
+                        duration_ms=0.0,  # Already calculated in engine
+                        hybrid_mode=False,  # Will be updated when hybrid search is implemented
+                    )
+
+                    return response.model_dump_json(indent=2)
+
+                except Exception as e:
+                    logger.error(f"Error performing semantic search: {e}")
+                    return OperationResponse(
+                        status=OperationStatus.ERROR,
+                        message=f"Semantic search failed: {str(e)}",
+                        error=str(e),
+                    ).model_dump_json()
+
+            @self.mcp.tool()
+            async def index_vault(
+                force_reindex: bool = False,
+                path_pattern: Optional[str] = None,
+                batch_size: int = 32,
+            ) -> str:
+                """
+                Index vault notes for semantic search.
+
+                Args:
+                    force_reindex: Force re-indexing of all documents
+                    path_pattern: Optional path pattern to index only matching notes
+                    batch_size: Batch size for processing (1-100)
+
+                Returns:
+                    JSON string with indexing statistics
+                """
+                try:
+                    notes_indexed, chunks_added, chunks_updated = await self.rag_engine.index_vault(
+                        force_reindex=force_reindex,
+                        path_pattern=path_pattern,
+                    )
+
+                    return OperationResponse(
+                        status=OperationStatus.SUCCESS,
+                        message=f"Indexing complete: {notes_indexed} notes indexed",
+                        data={
+                            "notes_indexed": notes_indexed,
+                            "chunks_added": chunks_added,
+                            "chunks_updated": chunks_updated,
+                        },
+                    ).model_dump_json(indent=2)
+
+                except Exception as e:
+                    logger.error(f"Error indexing vault: {e}")
+                    return OperationResponse(
+                        status=OperationStatus.ERROR,
+                        message=f"Indexing failed: {str(e)}",
+                        error=str(e),
+                    ).model_dump_json()
+
+            @self.mcp.tool()
+            async def get_index_stats() -> str:
+                """
+                Get statistics about the semantic search index.
+
+                Returns:
+                    JSON string with index statistics including document count, size, and provider info
+                """
+                try:
+                    stats = await self.rag_engine.get_index_stats()
+                    return stats.model_dump_json(indent=2)
+
+                except Exception as e:
+                    logger.error(f"Error getting index stats: {e}")
+                    return OperationResponse(
+                        status=OperationStatus.ERROR,
+                        message=f"Failed to get index stats: {str(e)}",
+                        error=str(e),
+                    ).model_dump_json()
+
+            @self.mcp.tool()
+            async def delete_index() -> str:
+                """
+                Clear the entire semantic search index.
+
+                WARNING: This will delete all indexed embeddings and cannot be undone.
+
+                Returns:
+                    JSON string with operation status
+                """
+                try:
+                    await self.rag_engine.clear_index()
+
+                    return OperationResponse(
+                        status=OperationStatus.SUCCESS,
+                        message="Index cleared successfully",
+                    ).model_dump_json(indent=2)
+
+                except Exception as e:
+                    logger.error(f"Error clearing index: {e}")
+                    return OperationResponse(
+                        status=OperationStatus.ERROR,
+                        message=f"Failed to clear index: {str(e)}",
+                        error=str(e),
+                    ).model_dump_json()
+
     def run(self) -> None:
         """Run the MCP server."""
         logger.info("Starting Obsidian MCP Server...")
